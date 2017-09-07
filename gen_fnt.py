@@ -7,18 +7,21 @@ Created by Aillieo on 2017-09-06
 With Python 3.5
 """
 
+from functools import reduce
 from PIL import Image
 import os
 import re
 
 
-def dict_to_str(dict):
-    ret = str(dict)
-    ret = ret.replace(":", "=")
-    ret = ret.replace("'", '"')
-    ret = re.sub(r'[\(\)\{\}]', "", ret)
+def format_str(func):
+    def wrapper(*args, **kw):
+        ret = func(*args, **kw)
+        ret = ret.replace(":", "=")
+        ret = ret.replace("'", '"')
+        ret = re.sub(r'[\(\)\{\}]', "", ret)
+        return ret
 
-    return ret
+    return wrapper
 
 
 # fnt configs:
@@ -49,14 +52,17 @@ class FntConfig:
 
         self.pages = {}
 
+    @format_str
     def __str__(self):
-        return dict_to_str(self.info) + '\n' + dict_to_str(self.common)
+        return str(self.info) + '\n' + str(self.common) + '\n'
 
 
 class CharDef:
-    def __init__(self):
+    def __init__(self, char, file):
+        self.char = char
+        self.file = file
         self.param = {
-            "id": 0,
+            "id": id,
             "x": 0,
             "y": 0,
             "width": 0,
@@ -68,8 +74,12 @@ class CharDef:
             "chnl": 0
         }
 
+    @format_str
     def __str__(self):
-        return ""
+        return str(self.param)
+
+    def update_param(self):
+        self.param["id"] = ord(self.char)
 
 
 class CharSet:
@@ -77,43 +87,63 @@ class CharSet:
         self.chars = []
 
     def __str__(self):
-        ret = ""
+        return reduce(lambda char1, char2: str(char1) + str(char2) + "\n", self.chars, "")
+
+    def add_new_char(self, new_char):
+        self.chars.append(new_char)
+
+    def update(self):
         for char in self.chars:
-            ret += str(char)
-        return ret
+            char.update_param()
 
 
 class TextureMerger(object):
-    def __init__(self, config, charset):
+    def __init__(self, config):
         self.config = config
-        self.charset = charset
+        self.charset = CharSet()
 
     def get_images(self):
         files = os.listdir('.')
-        print(files)
+        for filename in files:
+            char_name, ext = filename.split('.')
+            if ext.lower() == 'png' and len(char_name) == 1:
+                new_char = CharDef(char_name, filename)
+                self.charset.add_new_char(new_char)
 
     def gen_texture(self):
-        texture = Image.new('RGBA', (100, 100), (255, 255, 255))
-        print(texture)
+        self.get_images()
+        texture = Image.new('RGBA', (256, 256), (255, 255, 255, 0))
+
+        x_offset = 0
+        for char in self.charset.chars:
+            img = Image.open(char.file)
+            texture.paste(img, (x_offset, 0))
+            x_offset += img.size[0]
+
+        file_name = "output.png"
+        try:
+            texture.save(file_name, 'PNG')
+        except IOError:
+            print("IOError: save file failed: " + file_name)
+        self.charset.update()
 
 
 class FntGenerator:
     def __init__(self):
         self.config = FntConfig()
-        self.charset = CharSet()
+        self.textureMerger = TextureMerger(self.config)
 
     def gen_texture(self):
-        texture_merger = TextureMerger(self.config, self.charset)
-        texture_merger.gen_texture()
+        self.textureMerger.gen_texture()
 
     def gen_fnt(self):
+        self.gen_texture()
         fnt_str = ""
         fnt_str += str(self.config)
-        fnt_str += str(self.charset)
+        fnt_str += str(self.textureMerger.charset)
         print(fnt_str)
 
 
 if __name__ == '__main__':
     fg = FntGenerator()
-    fg.gen_texture()
     fg.gen_fnt()
