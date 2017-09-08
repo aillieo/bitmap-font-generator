@@ -18,13 +18,13 @@ def format_str(func):
         ret = func(*args, **kw)
         ret = re.sub(r'[\(\)\{\}]', "", ret)
         ret = re.sub(r'\'(?P<name>\w+)\': ', "\g<name>=", ret)
+        ret = re.sub(r', (?P<name>\w+)=', " \g<name>=", ret)
         ret = ret.replace("'", '"')
         return ret
 
     return wrapper
 
 
-# fnt configs:
 class FntConfig:
     def __init__(self):
         self.info = {
@@ -54,7 +54,7 @@ class FntConfig:
 
     @format_str
     def __str__(self):
-        return str(self.info) + '\n' + str(self.common) + '\n'
+        return 'info ' + str(self.info) + '\ncommon ' + str(self.common) + '\n'
 
 
 class CharDef:
@@ -70,7 +70,7 @@ class CharDef:
             "yoffset": 0,
             "xadvance": 0,
             "page": 0,
-            "chnl": 0
+            "chnl": 15
         }
         char_name = self.file.split('.')[0]
         self.param["id"] = ord(char_name)
@@ -79,7 +79,7 @@ class CharDef:
 
     @format_str
     def __str__(self):
-        return str(self.param)
+        return 'char ' + str(self.param)
 
     def set_texture_size(self, size):
         self.param["width"], self.param["height"] = size
@@ -94,7 +94,9 @@ class CharSet:
         self.chars = []
 
     def __str__(self):
-        return reduce(lambda char1, char2: str(char1) + str(char2) + "\n", self.chars, "")
+        ret = 'chars count=' + str(len(self.chars)) + '\n'
+        ret += reduce(lambda char1, char2: str(char1) + str(char2) + "\n", self.chars, "")
+        return ret
 
     def add_new_char(self, new_char):
         self.chars.append(new_char)
@@ -104,10 +106,23 @@ class CharSet:
         self.chars.sort(key=lambda char: char.param["height"], reverse=True)
 
 
-class TextureMerger(object):
+class PageDef:
+    def __init__(self, pid, file):
+        self.param = {
+            "id": pid,
+            "file": file
+        }
+
+    @format_str
+    def __str__(self):
+        return 'page ' + str(self.param)
+
+
+class TextureMerger:
     def __init__(self, config):
         self.config = config
         self.charset = CharSet()
+        self.pages = []
 
     def get_images(self):
         files = os.listdir('.')
@@ -142,8 +157,12 @@ class TextureMerger(object):
         file_name = "output.png"
         try:
             texture.save(file_name, 'PNG')
+            self.pages.append(PageDef(0, file_name))
         except IOError:
             print("IOError: save file failed: " + file_name)
+
+    def pages_to_str(self):
+        return reduce(lambda page1, page2: str(page1) + str(page2) + "\n", self.pages, "")
 
 
 class FntGenerator:
@@ -151,15 +170,13 @@ class FntGenerator:
         self.config = FntConfig()
         self.textureMerger = TextureMerger(self.config)
 
-    def gen_texture(self):
-        self.textureMerger.gen_texture()
-
     def gen_fnt(self):
-        self.gen_texture()
-        fnt_str = ""
-        fnt_str += str(self.config)
-        fnt_str += str(self.textureMerger.charset)
-        print(fnt_str)
+        self.textureMerger.gen_texture()
+        with open('output.fnt', 'w', encoding='utf8') as fnt:
+            fnt.write(str(self.config))
+            fnt.write(self.textureMerger.pages_to_str())
+            fnt.write(str(self.textureMerger.charset))
+        fnt.close()
 
 
 if __name__ == '__main__':
