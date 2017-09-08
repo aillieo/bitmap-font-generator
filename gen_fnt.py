@@ -16,9 +16,9 @@ import re
 def format_str(func):
     def wrapper(*args, **kw):
         ret = func(*args, **kw)
-        ret = ret.replace(":", "=")
-        ret = ret.replace("'", '"')
         ret = re.sub(r'[\(\)\{\}]', "", ret)
+        ret = re.sub(r'\'(?P<name>\w+)\': ', "\g<name>=", ret)
+        ret = ret.replace("'", '"')
         return ret
 
     return wrapper
@@ -44,8 +44,8 @@ class FntConfig:
         self.common = {
             "lineHeight": 19,
             "base": 26,
-            "scaleW": 512,
-            "scaleH": 512,
+            "scaleW": 256,
+            "scaleH": 256,
             "pages": 1,
             "packed": 0
         }
@@ -58,11 +58,10 @@ class FntConfig:
 
 
 class CharDef:
-    def __init__(self, char, file):
-        self.char = char
+    def __init__(self, file):
         self.file = file
         self.param = {
-            "id": id,
+            "id": 0,
             "x": 0,
             "y": 0,
             "width": 0,
@@ -73,13 +72,21 @@ class CharDef:
             "page": 0,
             "chnl": 0
         }
+        char_name = self.file.split('.')[0]
+        self.param["id"] = ord(char_name)
+        img = Image.open(self.file)
+        self.set_texture_size(img.size)
 
     @format_str
     def __str__(self):
         return str(self.param)
 
-    def update_param(self):
-        self.param["id"] = ord(self.char)
+    def set_texture_size(self, size):
+        self.param["width"], self.param["height"] = size
+        self.param["xadvance"] = size[0]
+
+    def set_texture_position(self, position):
+        self.param["x"], self.param["y"] = position
 
 
 class CharSet:
@@ -92,9 +99,9 @@ class CharSet:
     def add_new_char(self, new_char):
         self.chars.append(new_char)
 
-    def update(self):
-        for char in self.chars:
-            char.update_param()
+    def sort_for_texture(self):
+        self.chars.sort(key=lambda char: char.param["width"], reverse=True)
+        self.chars.sort(key=lambda char: char.param["height"], reverse=True)
 
 
 class TextureMerger(object):
@@ -105,27 +112,38 @@ class TextureMerger(object):
     def get_images(self):
         files = os.listdir('.')
         for filename in files:
-            char_name, ext = filename.split('.')
-            if ext.lower() == 'png' and len(char_name) == 1:
-                new_char = CharDef(char_name, filename)
+            name, ext = filename.split('.')
+            if ext.lower() == 'png' and len(name) == 1:
+                new_char = CharDef(filename)
                 self.charset.add_new_char(new_char)
+        self.charset.sort_for_texture()
 
     def gen_texture(self):
         self.get_images()
-        texture = Image.new('RGBA', (256, 256), (255, 255, 255, 0))
+        texture_w, texture_h = self.config.common["scaleW"], self.config.common["scaleH"]
+        texture = Image.new('RGBA', (texture_w, texture_h), (0, 0, 0, 0))
 
-        x_offset = 0
+        pos_x, pos_y, row_h = 0, 0, 0
         for char in self.charset.chars:
             img = Image.open(char.file)
-            texture.paste(img, (x_offset, 0))
-            x_offset += img.size[0]
+            if row_h == 0:
+                row_h = img.size[1]
+            if texture_w - pos_x >= img.size[0]:
+                char.set_texture_position((pos_x, pos_y))
+                texture.paste(img, (pos_x, pos_y))
+                pos_x += img.size[0]
+            else:
+                pos_y += row_h
+                row_h = img.size[1]
+                char.set_texture_position((0, pos_y))
+                texture.paste(img, (0, pos_y))
+                pos_x = img.size[0]
 
         file_name = "output.png"
         try:
             texture.save(file_name, 'PNG')
         except IOError:
             print("IOError: save file failed: " + file_name)
-        self.charset.update()
 
 
 class FntGenerator:
