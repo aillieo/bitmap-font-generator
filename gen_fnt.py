@@ -58,10 +58,10 @@ class FntConfig:
 
 
 class CharDef:
-    def __init__(self, file):
+    def __init__(self, id, file):
         self.file = file
         self.param = {
-            "id": 0,
+            "id": id,
             "x": 0,
             "y": 0,
             "width": 0,
@@ -72,8 +72,6 @@ class CharDef:
             "page": 0,
             "chnl": 15
         }
-        char_name = self.file.split('.')[0]
-        self.param["id"] = ord(char_name)
         img = Image.open(self.file)
         self.ini_with_texture_size(img.size)
 
@@ -135,9 +133,13 @@ class TextureMerger:
         files = os.listdir('.')
         for filename in files:
             name, ext = filename.split('.')
-            if ext.lower() == 'png' and len(name) == 1:
-                new_char = CharDef(filename)
-                self.charset.add_new_char(new_char)
+            if ext.lower() == 'png':
+                if len(name) == 1:
+                    new_char = CharDef(ord(name), filename)
+                    self.charset.add_new_char(new_char)
+                elif name[0:2] == '__' and name[2:].isdigit():
+                    new_char = CharDef(int(name[2:]), filename)
+                    self.charset.add_new_char(new_char)
         self.charset.sort_for_texture()
 
     def save_page(self, texture_to_save):
